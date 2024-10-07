@@ -65,7 +65,7 @@ public class AuthController {
 
     @GetMapping("/validate")
     public boolean validate(@RequestParam("token") String token) {
-
+        System.out.println("HI I am Here");
         return authService.validate(token);
     }
 }
