@@ -1,13 +1,17 @@
 package org.userservice.service;
 
 import ch.qos.logback.classic.pattern.DateConverter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.http.RequestEntity;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.userservice.client.KafkaProducerClient;
+import org.userservice.dto.EmailDto;
 import org.userservice.exception.UserAlreadyExistException;
 import org.userservice.exception.UserNotFoundException;
 import org.userservice.exception.WrongPasswordException;
@@ -30,12 +34,16 @@ public class AuthService {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder bCryptPasswordEncoder;
     private final SecretKey key;
+    private KafkaProducerClient kafkaProducerClient;
+    private ObjectMapper objectMapper;
 
-    public AuthService(UserRepository userRepository, BCryptPasswordEncoder bCryptPasswordEncoder, SessionRepository sessionRepository) {
+    public AuthService(UserRepository userRepository, BCryptPasswordEncoder bCryptPasswordEncoder, SessionRepository sessionRepository, KafkaProducerClient kafkaProducerClient, ObjectMapper objectMapper) {
         this.userRepository = userRepository;
         this.bCryptPasswordEncoder = bCryptPasswordEncoder;
         this.sessionRepository = sessionRepository;
         this.key = Keys.hmacShaKeyFor("SecureKeySecretKeyPrivateKeyVeryPrivatekeySuperSecretKey".getBytes(StandardCharsets.UTF_8));
+        this.kafkaProducerClient = kafkaProducerClient;
+        this.objectMapper = objectMapper;
     }
 
     public boolean signUp(String email, String password) throws UserAlreadyExistException {
@@ -50,6 +58,19 @@ public class AuthService {
         user.setPassword(bCryptPasswordEncoder.encode(password));
 
         userRepository.save(user);
+
+        // Send message into kafka for welcome email
+        EmailDto emailDto = new EmailDto();
+        emailDto.setTo(email);
+        emailDto.setSubject("Welcome");
+        emailDto.setBody("Welcome");
+        emailDto.setFrom("yugatankoth@gmail.com");
+
+        try{
+            kafkaProducerClient.sendMessage("user_SignUp", objectMapper.writeValueAsString(emailDto));
+        }catch(Exception e){
+            throw new RuntimeException(e.getMessage());
+        }
 
         return true;
     }
